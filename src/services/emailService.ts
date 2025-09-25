@@ -75,16 +75,16 @@ export const sendOTPEmail = async (
         controller.abort();
       }, EMAIL_CONFIG.timeout);
 
-      // Prepare request payload
+      // Prepare request payload - ONLY these 3 fields
       const requestPayload = {
-        to_email: recipientEmail,
-        employee_name: recipientName,
-        otp_code: otp
+        to_email: recipientEmail.trim(),
+        employee_name: recipientName.trim(),
+        otp_code: otp.trim()
       };
 
       console.log('📋 Request Payload:', requestPayload);
 
-      // Send request to PHP backend
+      // Send request to PHP backend with proper headers
       const response = await fetch(EMAIL_CONFIG.endpoint, {
         method: 'POST',
         headers: {
@@ -92,19 +92,22 @@ export const sendOTPEmail = async (
           'Accept': 'application/json',
         },
         body: JSON.stringify(requestPayload),
-        signal: controller.signal
+        signal: controller.signal,
+        mode: 'cors', // Explicitly set CORS mode
+        credentials: 'omit' // Don't send cookies
       });
 
       clearTimeout(timeoutId);
 
       console.log('📡 HTTP Response Status:', response.status);
+      console.log('📡 HTTP Response Headers:', response.headers);
       console.log('📡 HTTP Response OK:', response.ok);
 
       // Handle HTTP errors
       if (!response.ok) {
         const errorText = await response.text();
         console.error('❌ HTTP Error Response:', errorText);
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+        throw new Error(`HTTP ${response.status}: ${response.statusText} - ${errorText}`);
       }
 
       // Parse JSON response
@@ -134,6 +137,8 @@ export const sendOTPEmail = async (
       
       if (error.name === 'AbortError') {
         console.error('❌ Request timeout after', EMAIL_CONFIG.timeout / 1000, 'seconds');
+      } else if (error.message.includes('CORS')) {
+        console.error('❌ CORS Error - Backend needs CORS headers:', error.message);
       } else if (error.message.includes('fetch')) {
         console.error('❌ Network/Connection Error:', error.message);
       } else if (error.message.includes('JSON')) {
@@ -202,9 +207,9 @@ export const verifyStoredOTP = (email: string, inputOTP: string): { success: boo
     };
   }
 
-  // Verify OTP (case-insensitive, trimmed)
-  const cleanInput = inputOTP.trim().toUpperCase();
-  const cleanStored = stored.otp.trim().toUpperCase();
+  // Verify OTP (case-sensitive, trimmed)
+  const cleanInput = inputOTP.trim();
+  const cleanStored = stored.otp.trim();
   const isValid = cleanStored === cleanInput;
   
   console.log('🔍 OTP Comparison:', {
@@ -248,7 +253,7 @@ export const validateEmail = (email: string): boolean => {
   return isValid;
 };
 
-// Detect email provider for display purposes - ADDED BACK
+// Detect email provider for display purposes
 export const getEmailProvider = (email: string): string => {
   const domain = email.split('@')[1]?.toLowerCase();
   
